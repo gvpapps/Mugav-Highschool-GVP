@@ -142,6 +142,9 @@ const app = {
     // Damaged Stock Transactions (इ. ६ ते ८)
     damagedStockUpper: [],
 
+    // Inter-Section Stock Loans / Transfers (१ ते ५ व ६ ते ८ धान्य उचल/उसनवारी)
+    stockTransfers: [],
+
     // Daily Records keyed by 'YYYY-MM-DD' (इ. १ ते ५)
     records: {},
 
@@ -889,8 +892,12 @@ const app = {
         soyavadi: 0.0
       },
       stockReceipts: [],
+      stockReceiptsUpper: [],
       damagedStock: [],
+      damagedStockUpper: [],
+      stockTransfers: [],
       records: {},
+      recordsUpper: {},
       tasteRecords: {},
       customDemands: {},
       initialSampleLoaded: (udise === '27240304501')
@@ -1401,6 +1408,7 @@ const app = {
         this.data.stockReceiptsUpper = parsed.stockReceiptsUpper || [];
         this.data.damagedStock = parsed.damagedStock || [];
         this.data.damagedStockUpper = parsed.damagedStockUpper || [];
+        this.data.stockTransfers = parsed.stockTransfers || [];
         this.data.records = parsed.records || {};
         this.data.recordsUpper = parsed.recordsUpper || {};
         this.data.tasteRecords = parsed.tasteRecords || {};
@@ -1420,6 +1428,7 @@ const app = {
         this.data.stockReceiptsUpper = defaultData.stockReceiptsUpper || [];
         this.data.damagedStock = defaultData.damagedStock;
         this.data.damagedStockUpper = defaultData.damagedStockUpper || [];
+        this.data.stockTransfers = defaultData.stockTransfers || [];
         this.data.records = defaultData.records;
         this.data.recordsUpper = defaultData.recordsUpper || {};
         this.data.tasteRecords = defaultData.tasteRecords;
@@ -1643,6 +1652,7 @@ const app = {
         stockReceiptsUpper: this.data.stockReceiptsUpper || [],
         damagedStock: this.data.damagedStock,
         damagedStockUpper: this.data.damagedStockUpper || [],
+        stockTransfers: this.data.stockTransfers || [],
         records: this.data.records,
         recordsUpper: this.data.recordsUpper || {},
         tasteRecords: this.data.tasteRecords,
@@ -3538,6 +3548,16 @@ const app = {
    * Calculate Opening Stock as of target date 00:00 (Initial stock + Receipts strictly before targetDate - Consumed strictly before targetDate)
    */
   computeStockForDate(targetDateStr, section = this.activeSection) {
+    if (section === 'combined') {
+      const pStock = this.computeStockForDate(targetDateStr, 'primary');
+      const uStock = this.computeStockForDate(targetDateStr, 'upper');
+      const combined = {};
+      Object.keys(this.data.ingredients).forEach(k => {
+        combined[k] = +((pStock[k] || 0) + (uStock[k] || 0)).toFixed(4);
+      });
+      return combined;
+    }
+
     const initStock = this.getActiveInitialStock(section);
     const receipts = this.getActiveReceipts(section);
     const records = this.getActiveRecords(section);
@@ -3573,11 +3593,41 @@ const app = {
       }
     });
 
+    // Inter-Section Transfers before target date
+    const transfers = this.data.stockTransfers || [];
+    transfers.forEach(t => {
+      if (t.date < targetDateStr) {
+        if (section === 'primary') {
+          if (t.toSection === 'primary') {
+            Object.keys(t.items || {}).forEach(k => {
+              balances[k] = (balances[k] || 0) + (parseFloat(t.items[k]) || 0);
+            });
+          }
+          if (t.fromSection === 'primary') {
+            Object.keys(t.items || {}).forEach(k => {
+              balances[k] = (balances[k] || 0) - (parseFloat(t.items[k]) || 0);
+            });
+          }
+        } else if (section === 'upper') {
+          if (t.toSection === 'upper') {
+            Object.keys(t.items || {}).forEach(k => {
+              balances[k] = (balances[k] || 0) + (parseFloat(t.items[k]) || 0);
+            });
+          }
+          if (t.fromSection === 'upper') {
+            Object.keys(t.items || {}).forEach(k => {
+              balances[k] = (balances[k] || 0) - (parseFloat(t.items[k]) || 0);
+            });
+          }
+        }
+      }
+    });
+
     return balances;
   },
 
   /**
-   * Calculate current live available stock (Initial Stock + ALL Receipts - ALL Consumption - ALL Damaged Stock to date)
+   * Calculate current live available stock (Initial Stock + ALL Receipts - ALL Consumption - ALL Damaged Stock to date + Transfers)
    */
   computeCurrentLiveStock(section = this.activeSection) {
     if (section === 'combined') {
@@ -3616,6 +3666,34 @@ const app = {
       });
     });
 
+    // Inter-Section Transfers
+    const transfers = this.data.stockTransfers || [];
+    transfers.forEach(t => {
+      if (section === 'primary') {
+        if (t.toSection === 'primary') {
+          Object.keys(t.items || {}).forEach(k => {
+            balances[k] = (balances[k] || 0) + (parseFloat(t.items[k]) || 0);
+          });
+        }
+        if (t.fromSection === 'primary') {
+          Object.keys(t.items || {}).forEach(k => {
+            balances[k] = (balances[k] || 0) - (parseFloat(t.items[k]) || 0);
+          });
+        }
+      } else if (section === 'upper') {
+        if (t.toSection === 'upper') {
+          Object.keys(t.items || {}).forEach(k => {
+            balances[k] = (balances[k] || 0) + (parseFloat(t.items[k]) || 0);
+          });
+        }
+        if (t.fromSection === 'upper') {
+          Object.keys(t.items || {}).forEach(k => {
+            balances[k] = (balances[k] || 0) - (parseFloat(t.items[k]) || 0);
+          });
+        }
+      }
+    });
+
     return balances;
   },
 
@@ -3641,7 +3719,13 @@ const app = {
 
     // 2. Received during the month
     const received = {};
-    Object.keys(this.data.ingredients).forEach(k => received[k] = 0);
+    const transfersIn = {};
+    const transfersOut = {};
+    Object.keys(this.data.ingredients).forEach(k => {
+      received[k] = 0;
+      transfersIn[k] = 0;
+      transfersOut[k] = 0;
+    });
 
     (receipts || []).forEach(r => {
       if (r.date >= firstDateOfMonth && r.date <= lastDateOfMonth) {
@@ -3651,10 +3735,40 @@ const app = {
       }
     });
 
-    // 3. Total Available = Opening + Received
+    // Inter-Section Transfers during the month
+    const transfers = this.data.stockTransfers || [];
+    transfers.forEach(t => {
+      if (t.date >= firstDateOfMonth && t.date <= lastDateOfMonth) {
+        if (section === 'primary') {
+          if (t.toSection === 'primary') {
+            Object.keys(t.items || {}).forEach(k => {
+              transfersIn[k] = (transfersIn[k] || 0) + (parseFloat(t.items[k]) || 0);
+            });
+          }
+          if (t.fromSection === 'primary') {
+            Object.keys(t.items || {}).forEach(k => {
+              transfersOut[k] = (transfersOut[k] || 0) + (parseFloat(t.items[k]) || 0);
+            });
+          }
+        } else if (section === 'upper') {
+          if (t.toSection === 'upper') {
+            Object.keys(t.items || {}).forEach(k => {
+              transfersIn[k] = (transfersIn[k] || 0) + (parseFloat(t.items[k]) || 0);
+            });
+          }
+          if (t.fromSection === 'upper') {
+            Object.keys(t.items || {}).forEach(k => {
+              transfersOut[k] = (transfersOut[k] || 0) + (parseFloat(t.items[k]) || 0);
+            });
+          }
+        }
+      }
+    });
+
+    // 3. Total Available = Opening + Received + TransfersIn - TransfersOut
     const totalAvailable = {};
     Object.keys(this.data.ingredients).forEach(k => {
-      totalAvailable[k] = (opening[k] || 0) + (received[k] || 0);
+      totalAvailable[k] = (opening[k] || 0) + (received[k] || 0) + (transfersIn[k] || 0) - (transfersOut[k] || 0);
     });
 
     // 4. Consumed during the month (Cooking meals + Damaged / Expired Grain Write-off)
@@ -3710,6 +3824,8 @@ const app = {
       section,
       opening,
       received,
+      transfersIn,
+      transfersOut,
       totalAvailable,
       cookingConsumed,
       damaged,
@@ -5578,35 +5694,34 @@ const app = {
     // Render stock receipts table
     const tableBody = document.getElementById('stockReceiptsTableBody');
     const badge = document.getElementById('receiptCountBadge');
-    if (!tableBody) return;
-    tableBody.innerHTML = '';
+    if (tableBody) {
+      tableBody.innerHTML = '';
+      const receipts = this.getActiveReceipts(filter);
+      if (badge) badge.textContent = `${receipts.length} नोंदी`;
 
-    const receipts = this.getActiveReceipts(filter);
-    if (badge) badge.textContent = `${receipts.length} नोंदी`;
+      if (receipts.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" class="text-center p-3 text-muted">कोणतीही नवीन धान्य पावती नोंदवलेली नाही. 'नवीन धान्य प्राप्त नोंद' बटण वापरून नोंद करा.</td></tr>`;
+      } else {
+        receipts.forEach((r, idx) => {
+          const itemsList = Object.keys(r.items || {})
+            .filter(k => !isNaN(parseFloat(r.items[k])) && parseFloat(r.items[k]) !== 0)
+            .map(k => `${this.data.ingredients[k]?.name || k}: ${r.items[k]} kg`)
+            .join(', ');
 
-    if (receipts.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="5" class="text-center p-3 text-muted">कोणतीही नवीन धान्य पावती नोंदवलेली नाही. 'नवीन धान्य प्राप्त नोंद' बटण वापरून नोंद करा.</td></tr>`;
-      return;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${r.date}</strong></td>
+            <td>${r.billNo || '—'}</td>
+            <td>${itemsList}</td>
+            <td>${r.recordedBy || 'मुख्याध्यापक'}</td>
+            <td class="text-center no-print">
+              <button class="btn btn-sm btn-outline-danger" onclick="app.deleteStockReceipt(${idx}, '${filter}')">🗑️ हटवा</button>
+            </td>
+          `;
+          tableBody.appendChild(tr);
+        });
+      }
     }
-
-    receipts.forEach((r, idx) => {
-      const itemsList = Object.keys(r.items || {})
-        .filter(k => !isNaN(parseFloat(r.items[k])) && parseFloat(r.items[k]) !== 0)
-        .map(k => `${this.data.ingredients[k]?.name || k}: ${r.items[k]} kg`)
-        .join(', ');
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${r.date}</strong></td>
-        <td>${r.billNo || '—'}</td>
-        <td>${itemsList}</td>
-        <td>${r.recordedBy || 'मुख्याध्यापक'}</td>
-        <td class="text-center no-print">
-          <button class="btn btn-sm btn-outline-danger" onclick="app.deleteStockReceipt(${idx})">🗑️ हटवा</button>
-        </td>
-      `;
-      tableBody.appendChild(tr);
-    });
 
     // Render damaged stock table
     const dmgTableBody = document.getElementById('damagedStockTableBody');
@@ -5632,21 +5747,73 @@ const app = {
             <td><strong>${itemsList}</strong></td>
             <td>${d.recordedBy || 'मुख्याध्यापक'}</td>
             <td class="text-center no-print">
-              <button class="btn btn-sm btn-outline-danger" onclick="app.deleteDamagedStock(${idx})">🗑️ हटवा</button>
+              <button class="btn btn-sm btn-outline-danger" onclick="app.deleteDamagedStock(${idx}, '${filter}')">🗑️ हटवा</button>
             </td>
           `;
           dmgTableBody.appendChild(tr);
         });
       }
     }
+
+    // Render Inter-Section Stock Transfers (उचल / उसनवारी) table
+    const trfTableBody = document.getElementById('stockTransfersTableBody');
+    const trfBadge = document.getElementById('transferCountBadge');
+    if (trfTableBody) {
+      trfTableBody.innerHTML = '';
+      const allTransfers = this.data.stockTransfers || [];
+      const filteredTransfers = allTransfers.map((t, originalIdx) => ({ ...t, originalIdx })).filter(t => {
+        if (filter === 'combined') return true;
+        if (filter === 'primary') return (t.fromSection === 'primary' || t.toSection === 'primary');
+        if (filter === 'upper') return (t.fromSection === 'upper' || t.toSection === 'upper');
+        return true;
+      });
+
+      if (trfBadge) trfBadge.textContent = `${filteredTransfers.length} नोंदी`;
+
+      if (filteredTransfers.length === 0) {
+        trfTableBody.innerHTML = `<tr><td colspan="6" class="text-center p-3 text-muted">कोणतीही धान्य उचल किंवा उसनवारी नोंदवलेली नाही. १ ते ५ व ६ ते ८ मधील देवाणघेवाणीसाठी '🔄 उचल / उसनवारी नोंद' बटण वापरा.</td></tr>`;
+      } else {
+        filteredTransfers.forEach(t => {
+          const itemsList = Object.keys(t.items || {})
+            .filter(k => parseFloat(t.items[k]) > 0)
+            .map(k => `${this.data.ingredients[k]?.name || k}: ${t.items[k]} kg`)
+            .join(', ');
+
+          let badgeClass = 'transfer-direction-upper-to-primary';
+          if (t.direction === 'primary_to_upper') badgeClass = 'transfer-direction-primary-to-upper';
+          if (t.direction && t.direction.startsWith('repay')) badgeClass = 'transfer-direction-repay';
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${t.date}</strong></td>
+            <td><span class="transfer-direction-badge ${badgeClass}">${t.typeLabel || 'उचल / उसनवारी'}</span></td>
+            <td><strong>${itemsList}</strong></td>
+            <td><span class="text-dark">${t.reason || '—'}</span></td>
+            <td>${t.recordedBy || 'मुख्याध्यापक'}</td>
+            <td class="text-center no-print">
+              <button class="btn btn-sm btn-outline-danger" onclick="app.deleteStockTransfer(${t.originalIdx})">🗑️ हटवा</button>
+            </td>
+          `;
+          trfTableBody.appendChild(tr);
+        });
+      }
+    }
   },
 
-  openAddDamagedStockModal() {
+  // -------------------------------------------------------------------------
+  // DAMAGED STOCK MODAL LOGIC (खराब धान्य)
+  // -------------------------------------------------------------------------
+  currentDamagedStockModalSection: 'primary',
+
+  openAddDamagedStockModal(section) {
     const modal = document.getElementById('addDamagedStockModal');
     const dateInput = document.getElementById('damagedStockDate');
     const reasonInput = document.getElementById('damagedStockReason');
     const grid = document.getElementById('damagedStockInputsGrid');
     if (!modal || !grid) return;
+
+    this.currentDamagedStockModalSection = (section === 'upper' || this.stockViewFilter === 'upper' || (this.activeSection === 'upper' && this.stockViewFilter !== 'primary')) ? 'upper' : 'primary';
+    this.updateDamagedStockModalUI();
 
     const currentFbMonth = document.getElementById('formbMonthPicker')?.value || document.getElementById('monthlyExcelPicker')?.value;
     const todayStr = new Date().toISOString().substring(0, 10);
@@ -5668,6 +5835,19 @@ const app = {
     });
 
     modal.style.display = 'flex';
+  },
+
+  setDamagedStockModalSection(sec) {
+    this.currentDamagedStockModalSection = (sec === 'upper') ? 'upper' : 'primary';
+    this.updateDamagedStockModalUI();
+  },
+
+  updateDamagedStockModalUI() {
+    const sec = this.currentDamagedStockModalSection;
+    const btnP = document.getElementById('modalDamagedSecPrimary');
+    const btnU = document.getElementById('modalDamagedSecUpper');
+    if (btnP) btnP.classList.toggle('active', sec === 'primary');
+    if (btnU) btnU.classList.toggle('active', sec === 'upper');
   },
 
   closeAddDamagedStockModal() {
@@ -5695,10 +5875,12 @@ const app = {
       return;
     }
 
-    if (!this.data.damagedStock) this.data.damagedStock = [];
+    const sec = this.currentDamagedStockModalSection;
+    const targetDamaged = this.getActiveDamaged(sec);
 
-    this.data.damagedStock.push({
+    targetDamaged.push({
       id: 'dmg_' + Date.now(),
+      section: sec,
       date: dateInput.value,
       reason: reasonInput ? (reasonInput.value.trim() || 'खराब / मुदत संपलेले धान्य') : 'खराब धान्य',
       items: items,
@@ -5709,13 +5891,14 @@ const app = {
     this.saveState();
     this.closeAddDamagedStockModal();
     this.refreshAllViews();
-    this.showToast('✅ खराब / मुदत संपलेले धान्य नोंदवले गेले व संबंधित महिन्यातील वापरात आपोआप जोडले गेले!', 'success');
+    this.showToast(`✅ ${sec === 'upper' ? 'इ. ६ ते ८' : 'इ. १ ते ५'} खराब धान्य नोंदवले गेले व वापरात आपोआप जोडले गेले!`, 'success');
   },
 
-  deleteDamagedStock(idx) {
+  deleteDamagedStock(idx, section = this.stockViewFilter || this.activeSection) {
     if (confirm('तुम्हाला खात्री आहे का? ही खराब धान्याची नोंद हटवायची आहे?')) {
-      if (this.data.damagedStock && this.data.damagedStock[idx]) {
-        this.data.damagedStock.splice(idx, 1);
+      const targetDamaged = (section === 'upper') ? this.data.damagedStockUpper : this.data.damagedStock;
+      if (targetDamaged && targetDamaged[idx]) {
+        targetDamaged.splice(idx, 1);
         this.saveState();
         this.refreshAllViews();
         this.showToast('खराब धान्याची नोंद हटवण्यात आली.', 'warning');
@@ -5723,13 +5906,23 @@ const app = {
     }
   },
 
-  openAddStockModal() {
+  // -------------------------------------------------------------------------
+  // RECEIVED STOCK MODAL LOGIC (नवीन धान्य प्राप्त)
+  // -------------------------------------------------------------------------
+  currentAddStockModalSection: 'primary',
+
+  openAddStockModal(section) {
     const modal = document.getElementById('addStockModal');
     const dateInput = document.getElementById('stockReceiptDate');
+    const billInput = document.getElementById('stockReceiptBillNo');
     const grid = document.getElementById('stockInputsGrid');
     if (!modal || !grid) return;
 
+    this.currentAddStockModalSection = (section === 'upper' || this.stockViewFilter === 'upper' || (this.activeSection === 'upper' && this.stockViewFilter !== 'primary')) ? 'upper' : 'primary';
+    this.updateAddStockModalUI();
+
     if (dateInput) dateInput.value = new Date().toISOString().substring(0, 10);
+    if (billInput) billInput.value = '';
 
     grid.innerHTML = '';
     Object.keys(this.data.ingredients).forEach(key => {
@@ -5738,12 +5931,25 @@ const app = {
       div.className = 'form-group';
       div.innerHTML = `
         <label class="form-label font-sm">${ing.name} (${ing.unit})</label>
-        <input type="number" step="0.001" class="form-control stock-item-input" data-key="${key}" placeholder="0.00 (ऋण - नोंद शक्य)">
+        <input type="number" step="${ing.category === 'spice' ? '0.001' : '0.01'}" class="form-control stock-item-input" data-key="${key}" placeholder="0.00 (ऋण - नोंद शक्य)">
       `;
       grid.appendChild(div);
     });
 
     modal.style.display = 'flex';
+  },
+
+  setAddStockModalSection(sec) {
+    this.currentAddStockModalSection = (sec === 'upper') ? 'upper' : 'primary';
+    this.updateAddStockModalUI();
+  },
+
+  updateAddStockModalUI() {
+    const sec = this.currentAddStockModalSection;
+    const btnP = document.getElementById('modalAddStockSecPrimary');
+    const btnU = document.getElementById('modalAddStockSecUpper');
+    if (btnP) btnP.classList.toggle('active', sec === 'primary');
+    if (btnU) btnU.classList.toggle('active', sec === 'upper');
   },
 
   closeAddStockModal() {
@@ -5768,51 +5974,80 @@ const app = {
       return;
     }
 
-    this.data.stockReceipts.push({
+    const sec = this.currentAddStockModalSection;
+    const targetReceipts = this.getActiveReceipts(sec);
+
+    targetReceipts.push({
+      id: 'rcp_' + Date.now(),
+      section: sec,
       date: dateInput.value,
       billNo: billInput ? billInput.value.trim() : '',
       items: items,
-      recordedBy: this.data.settings.headmaster,
+      recordedBy: this.data.settings.headmaster || 'मुख्याध्यापक',
       createdAt: new Date().toISOString()
     });
 
     this.saveState();
     this.closeAddStockModal();
-    this.showToast('✅ धान्य प्राप्त नोंद यशस्वीरित्या जतन झाली!', 'success');
+    this.showToast(`✅ ${sec === 'upper' ? 'इ. ६ ते ८' : 'इ. १ ते ५'} धान्य प्राप्त नोंद यशस्वीरित्या जतन झाली!`, 'success');
     this.renderStockView();
   },
 
-  deleteStockReceipt(idx) {
+  deleteStockReceipt(idx, section = this.stockViewFilter || this.activeSection) {
     if (confirm('ही धान्य पावती नोंद हटवायची आहे का?')) {
-      this.data.stockReceipts.splice(idx, 1);
-      this.saveState();
-      this.showToast('पावती नोंद हटवण्यात आली.', 'warning');
-      this.renderStockView();
+      const targetReceipts = (section === 'upper') ? this.data.stockReceiptsUpper : this.data.stockReceipts;
+      if (targetReceipts && targetReceipts[idx]) {
+        targetReceipts.splice(idx, 1);
+        this.saveState();
+        this.showToast('पावती नोंद हटवण्यात आली.', 'warning');
+        this.renderStockView();
+      }
     }
   },
 
-  /**
-   * Open Modal to Edit Old / Opening Stock (मागील शिल्लक)
-   */
-  openEditOldStockModal() {
+  // -------------------------------------------------------------------------
+  // EDIT OLD / OPENING STOCK MODAL (मागील शिल्लक संपादन)
+  // -------------------------------------------------------------------------
+  currentOldStockModalSection: 'primary',
+
+  openEditOldStockModal(section) {
     const modal = document.getElementById('editOldStockModal');
     const grid = document.getElementById('oldStockInputsGrid');
     if (!modal || !grid) return;
 
+    this.currentOldStockModalSection = (section === 'upper' || this.stockViewFilter === 'upper' || (this.activeSection === 'upper' && this.stockViewFilter !== 'primary')) ? 'upper' : 'primary';
+    this.renderOldStockModalInputs();
+    modal.style.display = 'flex';
+  },
+
+  switchOldStockModalSection(section) {
+    this.currentOldStockModalSection = (section === 'upper') ? 'upper' : 'primary';
+    this.renderOldStockModalInputs();
+  },
+
+  renderOldStockModalInputs() {
+    const grid = document.getElementById('oldStockInputsGrid');
+    if (!grid) return;
     grid.innerHTML = '';
+
+    const sec = this.currentOldStockModalSection;
+    const btnP = document.getElementById('modalOldStockSecPrimary');
+    const btnU = document.getElementById('modalOldStockSecUpper');
+    if (btnP) btnP.classList.toggle('active', sec === 'primary');
+    if (btnU) btnU.classList.toggle('active', sec === 'upper');
+
+    const stockData = this.getActiveInitialStock(sec);
     Object.keys(this.data.ingredients).forEach(key => {
       const ing = this.data.ingredients[key];
-      const curVal = this.data.initialStock[key] !== undefined ? this.data.initialStock[key] : 0;
+      const curVal = stockData[key] !== undefined ? stockData[key] : 0;
       const div = document.createElement('div');
       div.className = 'form-group';
       div.innerHTML = `
         <label class="form-label font-sm" style="font-weight: 600;">${ing.name} (${ing.unit})</label>
-        <input type="number" step="0.001" class="form-control old-stock-modal-input" data-key="${key}" value="${curVal}" placeholder="0.00 (ऋण - नोंद शक्य)">
+        <input type="number" step="${ing.category === 'spice' ? '0.001' : '0.01'}" class="form-control old-stock-modal-input" data-key="${key}" value="${curVal}" placeholder="0.00 (ऋण - नोंद शक्य)">
       `;
       grid.appendChild(div);
     });
-
-    modal.style.display = 'flex';
   },
 
   closeEditOldStockModal() {
@@ -5821,18 +6056,162 @@ const app = {
   },
 
   saveOldStockFromModal() {
+    const sec = this.currentOldStockModalSection;
+    const targetStock = (sec === 'upper') ? (this.data.initialStockUpper = this.data.initialStockUpper || {}) : (this.data.initialStock = this.data.initialStock || {});
+
     document.querySelectorAll('.old-stock-modal-input').forEach(inp => {
       const key = inp.dataset.key;
       const val = parseFloat(inp.value);
       if (key && !isNaN(val)) {
-        this.data.initialStock[key] = val;
+        targetStock[key] = val;
       }
     });
 
     this.saveState();
     this.closeEditOldStockModal();
     this.refreshAllViews();
-    this.showToast('✅ मागील शिल्लक धान्य साठा (Old Stock) यशस्वीरित्या जतन झाला!', 'success');
+    this.showToast(`✅ मागील शिल्लक धान्य साठा (${sec === 'upper' ? 'इ. ६ ते ८' : 'इ. १ ते ५'}) यशस्वीरित्या जतन झाला!`, 'success');
+  },
+
+  // -------------------------------------------------------------------------
+  // INTER-SECTION STOCK LOANS / TRANSFERS (१ ते ५ व ६ ते ८ उचल/उसनवारी)
+  // -------------------------------------------------------------------------
+  openStockTransferModal() {
+    const modal = document.getElementById('stockTransferModal');
+    const dateInput = document.getElementById('stockTransferDate');
+    const reasonInput = document.getElementById('stockTransferReason');
+    const dirSelect = document.getElementById('stockTransferDirection');
+    const grid = document.getElementById('stockTransferInputsGrid');
+    if (!modal || !grid) return;
+
+    if (dateInput) dateInput.value = new Date().toISOString().substring(0, 10);
+    if (reasonInput) reasonInput.value = '';
+    if (dirSelect) dirSelect.value = 'upper_to_primary';
+    this.onTransferDirectionChange();
+
+    grid.innerHTML = '';
+    Object.keys(this.data.ingredients).forEach(key => {
+      const ing = this.data.ingredients[key];
+      const div = document.createElement('div');
+      div.className = 'form-group';
+      div.innerHTML = `
+        <label class="form-label font-sm" style="font-weight: 600;">${ing.name} (${ing.unit})</label>
+        <input type="number" step="${ing.category === 'spice' ? '0.001' : '0.01'}" min="0" class="form-control stock-transfer-item-input" data-key="${key}" placeholder="0.00">
+      `;
+      grid.appendChild(div);
+    });
+
+    modal.style.display = 'flex';
+  },
+
+  closeStockTransferModal() {
+    const modal = document.getElementById('stockTransferModal');
+    if (modal) modal.style.display = 'none';
+  },
+
+  onTransferDirectionChange() {
+    const dirSelect = document.getElementById('stockTransferDirection');
+    const hint = document.getElementById('transferDirectionHint');
+    if (!dirSelect || !hint) return;
+
+    const val = dirSelect.value;
+    if (val === 'upper_to_primary') {
+      hint.textContent = '🎒 १ ते ५ साठ्यात जमा (+) होईल आणि 🎓 ६ ते ८ साठ्यातून वजा (-) होईल.';
+      hint.style.background = '#e0f2fe';
+      hint.style.color = '#0369a1';
+      hint.style.borderColor = '#7dd3fc';
+    } else if (val === 'primary_to_upper') {
+      hint.textContent = '🎓 ६ ते ८ साठ्यात जमा (+) होईल आणि 🎒 १ ते ५ साठ्यातून वजा (-) होईल.';
+      hint.style.background = '#ede9fe';
+      hint.style.color = '#5b21b6';
+      hint.style.borderColor = '#c4b5fd';
+    } else if (val === 'repay_primary_to_upper') {
+      hint.textContent = '🤝 १ ते ५ ने उसनवारी परत केली: १ ते ५ साठ्यातून वजा (-) होईल व ६ ते ८ साठ्यात परत जमा (+) होईल.';
+      hint.style.background = '#f0fdf4';
+      hint.style.color = '#166534';
+      hint.style.borderColor = '#86efac';
+    } else if (val === 'repay_upper_to_primary') {
+      hint.textContent = '🤝 ६ ते ८ ने उसनवारी परत केली: ६ ते ८ साठ्यातून वजा (-) होईल व १ ते ५ साठ्यात परत जमा (+) होईल.';
+      hint.style.background = '#f0fdf4';
+      hint.style.color = '#166534';
+      hint.style.borderColor = '#86efac';
+    }
+  },
+
+  saveStockTransfer() {
+    const dateInput = document.getElementById('stockTransferDate');
+    const dirSelect = document.getElementById('stockTransferDirection');
+    const reasonInput = document.getElementById('stockTransferReason');
+    if (!dateInput || !dateInput.value) {
+      alert('कृपया दिनांक निवडा.');
+      return;
+    }
+
+    const items = {};
+    document.querySelectorAll('.stock-transfer-item-input').forEach(inp => {
+      const key = inp.dataset.key;
+      const val = parseFloat(inp.value) || 0;
+      if (val > 0) items[key] = val;
+    });
+
+    if (Object.keys(items).length === 0) {
+      alert('कृपया उचल/उसनवारीसाठी किमान एका धान्याचे प्रमाण भरा.');
+      return;
+    }
+
+    const dir = dirSelect ? dirSelect.value : 'upper_to_primary';
+    let fromSection = 'upper';
+    let toSection = 'primary';
+    let typeLabel = '६ ते ८ ➔ १ ते ५ उचल';
+
+    if (dir === 'upper_to_primary') {
+      fromSection = 'upper';
+      toSection = 'primary';
+      typeLabel = '🎒 ६ ते ८ ➔ १ ते ५ उचल';
+    } else if (dir === 'primary_to_upper') {
+      fromSection = 'primary';
+      toSection = 'upper';
+      typeLabel = '🎓 १ ते ५ ➔ ६ ते ८ उचल';
+    } else if (dir === 'repay_primary_to_upper') {
+      fromSection = 'primary';
+      toSection = 'upper';
+      typeLabel = '🤝 १ ते ५ ➔ ६ ते ८ परतफेड';
+    } else if (dir === 'repay_upper_to_primary') {
+      fromSection = 'upper';
+      toSection = 'primary';
+      typeLabel = '🤝 ६ ते ८ ➔ १ ते ५ परतफेड';
+    }
+
+    if (!this.data.stockTransfers) this.data.stockTransfers = [];
+
+    this.data.stockTransfers.push({
+      id: 'trf_' + Date.now(),
+      date: dateInput.value,
+      direction: dir,
+      typeLabel: typeLabel,
+      fromSection: fromSection,
+      toSection: toSection,
+      items: items,
+      reason: reasonInput ? (reasonInput.value.trim() || 'उचल / उसनवारी नोंद') : 'उचल / उसनवारी नोंद',
+      recordedBy: this.data.settings.headmaster || 'मुख्याध्यापक',
+      createdAt: new Date().toISOString()
+    });
+
+    this.saveState();
+    this.closeStockTransferModal();
+    this.refreshAllViews();
+    this.showToast('✅ धान्य उचल/उसनवारी यशस्वीरित्या नोंदवली गेली व दोन्ही साठ्यांमध्ये समायोजित झाली!', 'success');
+  },
+
+  deleteStockTransfer(idx) {
+    if (confirm('ही धान्य उचल / उसनवारी नोंद हटवायची आहे का? नोंद हटवल्यास दोन्ही वर्गांचा साठा पूर्ववत होईल.')) {
+      if (this.data.stockTransfers && this.data.stockTransfers[idx]) {
+        this.data.stockTransfers.splice(idx, 1);
+        this.saveState();
+        this.refreshAllViews();
+        this.showToast('उचल/उसनवारी नोंद हटवण्यात आली व साठा पूर्ववत झाला.', 'warning');
+      }
+    }
   },
 
   renderOldStockInSettings() {

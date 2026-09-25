@@ -1528,6 +1528,9 @@
               <button class="btn btn-primary" onclick="app.openAddStockModal()">
                 <span>➕ नवीन धान्य प्राप्त नोंद (Add Received Stock)</span>
               </button>
+              <button class="btn btn-info text-white" onclick="app.openStockTransferModal()" style="font-weight: 700; background: #0284c7; border-color: #0284c7;">
+                <span>🔄 उचल / उसनवारी नोंद (Inter-Section Loan)</span>
+              </button>
             </div>
           </div>
 
@@ -1601,6 +1604,36 @@
                     </tr>
                   </thead>
                   <tbody id="damagedStockTableBody">
+                    <!-- Dynamic Rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inter-Section Stock Transfer (उचल / उसनवारी) History -->
+          <div class="card mt-4" style="border-left: 4px solid #0284c7;">
+            <div class="card-header flex-between" style="background: #f0f9ff;">
+              <div>
+                <h3 class="card-title" style="color: #0369a1;">🔄 १ ते ५ व ६ ते ८ उचल व उसनवारी नोंदींचा इतिहास (Inter-Section Loan Log)</h3>
+                <p class="form-hint mb-0" style="color: #0284c7; font-size: 0.8rem;">१ ते ५ व ६ ते ८ मधील परस्पर उचल/उसनवारी नोंदी संबंधित विभागांच्या साठ्यातून आपोआप वजा किंवा जमा होतात.</p>
+              </div>
+              <span class="badge badge-info" id="transferCountBadge">0 नोंदी</span>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover">
+                  <thead>
+                    <tr>
+                      <th>नोंद दिनांक</th>
+                      <th>देवाणघेवाण प्रकार (From ➔ To)</th>
+                      <th>धान्य प्रकार व प्रमाण (कि.ग्रॅ.)</th>
+                      <th>कारण / शेरा</th>
+                      <th>नोंदवणार</th>
+                      <th class="no-print text-center">क्रिया</th>
+                    </tr>
+                  </thead>
+                  <tbody id="stockTransfersTableBody">
                     <!-- Dynamic Rows -->
                   </tbody>
                 </table>
@@ -2176,6 +2209,7 @@
           </button>
         </div>
       </div>
+    </div>
     <!-- Modal: Dual Section Simultaneous Entry (१ ते ५ आणि ६ ते ८ एकत्र नोंद) -->
     <div id="dualEntryModal" class="modal-backdrop" style="display: none; z-index: 1000008;">
       <div class="modal-dialog" style="max-width: 650px;">
@@ -2290,7 +2324,7 @@
     </div>
 
     <!-- Modal: Add Received Stock -->
-    <div id="addStockModal" class="modal-backdrop" style="display: none;">
+    <div id="addStockModal" class="modal-backdrop" style="display: none; z-index: 1000007;">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
@@ -2300,6 +2334,19 @@
           <div class="modal-body">
             <form id="addStockForm" onsubmit="event.preventDefault(); app.saveStockReceipt();">
               
+              <!-- Section Selection -->
+              <div class="mb-3 d-flex align-items-center justify-content-between p-2 rounded" style="background: #f1f5f9; border: 1px solid #e2e8f0;">
+                <span class="fw-bold text-dark font-sm">धान्य कोणत्या विभागासाठी प्राप्त झाले?</span>
+                <div class="section-segmented-group" role="group">
+                  <button type="button" class="btn-section-toggle active" id="modalAddStockSecPrimary" onclick="app.setAddStockModalSection('primary')">
+                    🎒 इ. १ ते ५
+                  </button>
+                  <button type="button" class="btn-section-toggle" id="modalAddStockSecUpper" onclick="app.setAddStockModalSection('upper')">
+                    🎓 इ. ६ ते ८
+                  </button>
+                </div>
+              </div>
+
               <div class="form-row">
                 <div class="form-group flex-1">
                   <label for="stockReceiptDate" class="form-label">प्राप्त दिनांक</label>
@@ -2332,7 +2379,7 @@
     </div>
 
     <!-- Modal: Edit Old / Opening Stock (मागील शिल्लक संपादन) -->
-    <div id="editOldStockModal" class="modal-backdrop" style="display: none;">
+    <div id="editOldStockModal" class="modal-backdrop" style="display: none; z-index: 1000007;">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
@@ -2341,6 +2388,20 @@
           </div>
           <div class="modal-body">
             <form id="editOldStockForm" onsubmit="event.preventDefault(); app.saveOldStockFromModal();">
+              
+              <!-- Section Selection -->
+              <div class="mb-3 d-flex align-items-center justify-content-between p-2 rounded" style="background: #f1f5f9; border: 1px solid #e2e8f0;">
+                <span class="fw-bold text-dark font-sm">कोणत्या विभागाची मागील शिल्लक?</span>
+                <div class="section-segmented-group" role="group">
+                  <button type="button" class="btn-section-toggle active" id="modalOldStockSecPrimary" onclick="app.switchOldStockModalSection('primary')">
+                    🎒 इ. १ ते ५
+                  </button>
+                  <button type="button" class="btn-section-toggle" id="modalOldStockSecUpper" onclick="app.switchOldStockModalSection('upper')">
+                    🎓 इ. ६ ते ८
+                  </button>
+                </div>
+              </div>
+
               <p class="form-hint mb-3" style="font-size: 0.88rem; color: #334155;">शाळेकडील सुरुवातीचा शिल्लक माल (Opening Stock) कि.ग्रॅ. मध्ये भरा:</p>
               
               <div class="stock-inputs-grid" id="oldStockInputsGrid">
@@ -2429,7 +2490,7 @@
     </div>
 
     <!-- Modal: Add Damaged / Expired Stock -->
-    <div id="addDamagedStockModal" class="modal-backdrop" style="display: none;">
+    <div id="addDamagedStockModal" class="modal-backdrop" style="display: none; z-index: 1000007;">
       <div class="modal-dialog">
         <div class="modal-content" style="border-top: 4px solid #f59e0b;">
           <div class="modal-header" style="background: #fffbeb;">
@@ -2438,6 +2499,20 @@
           </div>
           <div class="modal-body">
             <form id="addDamagedStockForm" onsubmit="event.preventDefault(); app.saveDamagedStock();">
+              
+              <!-- Section Selection -->
+              <div class="mb-3 d-flex align-items-center justify-content-between p-2 rounded" style="background: #fffbeb; border: 1px solid #fde68a;">
+                <span class="fw-bold font-sm" style="color: #92400e;">खराब धान्य कोणत्या विभागातील आहे?</span>
+                <div class="section-segmented-group" role="group">
+                  <button type="button" class="btn-section-toggle active" id="modalDamagedSecPrimary" onclick="app.setDamagedStockModalSection('primary')">
+                    🎒 इ. १ ते ५
+                  </button>
+                  <button type="button" class="btn-section-toggle" id="modalDamagedSecUpper" onclick="app.setDamagedStockModalSection('upper')">
+                    🎓 इ. ६ ते ८
+                  </button>
+                </div>
+              </div>
+
               <p class="form-hint mb-3" style="color: #475569; font-size: 0.85rem;">
                 येथे नोंदवलेले खराब / नासाडी झालेले धान्य संबंधित महिन्यातील एकूण वापर (Consumed) मध्ये आपोआप जोडले जाईल व साठ्यातून कमी केले जाईल.
               </p>
@@ -2464,6 +2539,72 @@
                 </button>
                 <button type="button" class="btn btn-outline-secondary" onclick="app.closeAddDamagedStockModal()">
                   <span>रद्द करा</span>
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Inter-Section Stock Loan / Transfer (१ ते ५ व ६ ते ८ उचल/उसनवारी नोंद) -->
+    <div id="stockTransferModal" class="modal-backdrop" style="display: none; z-index: 1000007;">
+      <div class="modal-dialog" style="max-width: 660px;">
+        <div class="modal-content" style="border-top: 4px solid #0284c7;">
+          <div class="modal-header" style="background: #f0f9ff; display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem;">
+            <div class="d-flex align-items-center gap-2">
+              <span style="font-size: 1.5rem;">🔄</span>
+              <div>
+                <h3 class="modal-title" style="color: #0369a1; font-weight: 800; margin: 0; font-size: 1.15rem;">
+                  १ ते ५ आणि ६ ते ८ धान्य उचल / उसनवारी नोंद
+                </h3>
+                <small class="text-muted" style="font-size: 0.78rem;">एका विभागाकडून दुसऱ्या विभागास धान्य उसने देणे / घेणे किंवा परत करणे</small>
+              </div>
+            </div>
+            <button class="modal-close-btn" type="button" onclick="app.closeStockTransferModal()">&times;</button>
+          </div>
+          <div class="modal-body" style="max-height: 80vh; overflow-y: auto; padding: 1.25rem;">
+            <form id="stockTransferForm" onsubmit="event.preventDefault(); app.saveStockTransfer();">
+              
+              <!-- Date & Transfer Direction -->
+              <div class="form-row mb-3">
+                <div class="form-group flex-1">
+                  <label for="stockTransferDate" class="form-label fw-bold">📅 दिनांक निवडा</label>
+                  <input type="date" id="stockTransferDate" class="form-control" required>
+                </div>
+                <div class="form-group flex-2">
+                  <label for="stockTransferDirection" class="form-label fw-bold">🔄 देवाणघेवाण / उसनवारी प्रकार</label>
+                  <select id="stockTransferDirection" class="form-control form-select" onchange="app.onTransferDirectionChange()" required>
+                    <option value="upper_to_primary">🎒 ६ ते ८ कडून ➔ १ ते ५ ला उचल (१ ते ५ ला मिळाले +, ६ ते ८ मधून वजा -)</option>
+                    <option value="primary_to_upper">🎓 १ ते ५ कडून ➔ ६ ते ८ ला उचल (६ ते ८ ला मिळाले +, १ ते ५ मधून वजा -)</option>
+                    <option value="repay_primary_to_upper">🤝 १ ते ५ ने ➔ ६ ते ८ ला उसनवारी परत केली (१ ते ५ मधून वजा -, ६ ते ८ ला जमा +)</option>
+                    <option value="repay_upper_to_primary">🤝 ६ ते ८ ने ➔ १ ते ५ ला उसनवारी परत केली (६ ते ८ मधून वजा -, १ ते ५ ला जमा +)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Direction Hint Badge -->
+              <div id="transferDirectionHint" class="p-2 mb-3 rounded text-center font-sm fw-bold" style="background: #e0f2fe; color: #0369a1; border: 1px dashed #7dd3fc;">
+                🎒 १ ते ५ साठ्यात जमा (+) होईल आणि 🎓 ६ ते ८ साठ्यातून वजा (-) होईल.
+              </div>
+
+              <div class="form-group mb-3">
+                <label for="stockTransferReason" class="form-label fw-bold">कारण / शेरा / नोंद</label>
+                <input type="text" id="stockTransferReason" class="form-control" placeholder="उदा. तांदूळ संपल्यामुळे ६ ते ८ कडून उसने घेतले / उसनवारी परत केली">
+              </div>
+
+              <h4 class="mt-3 mb-2 font-md fw-bold" style="color: #1e293b;">उचल / उसनवारी धान्याचे प्रमाण भरा (कि.ग्रॅ. / ग्रॅममध्ये):</h4>
+              <div class="stock-inputs-grid" id="stockTransferInputsGrid">
+                <!-- Injected via JS -->
+              </div>
+
+              <div class="modal-footer mt-4 d-flex justify-content-between p-0 pt-3" style="border-top: 1px solid #e2e8f0;">
+                <button type="button" class="btn btn-outline-secondary" onclick="app.closeStockTransferModal()">
+                  रद्द करा
+                </button>
+                <button type="submit" class="btn btn-info text-white fw-bold px-4" style="background: #0284c7; border-color: #0284c7;">
+                  <span>💾 उचल / उसनवारी साठ्यात नोंदवा</span>
                 </button>
               </div>
 

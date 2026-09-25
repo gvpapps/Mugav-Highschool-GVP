@@ -241,36 +241,72 @@ const cloudSync = {
       if (existingRemote && existingRemote.appData && remoteRecCount > 0) {
         const remoteData = existingRemote.appData;
         const mergedRecords = Object.assign({}, remoteData.records || {}, dataToPush.records || {});
+        const mergedRecordsUpper = Object.assign({}, remoteData.recordsUpper || {}, dataToPush.recordsUpper || {});
         const mergedTaste = Object.assign({}, remoteData.tasteRecords || {}, dataToPush.tasteRecords || {});
+        const mergedTasteUpper = Object.assign({}, remoteData.tasteRecordsUpper || {}, dataToPush.tasteRecordsUpper || {});
         
-        // Stock receipts union
+        // Stock receipts union (Primary)
         const mergedReceipts = [...(remoteData.stockReceipts || [])];
         (dataToPush.stockReceipts || []).forEach(lr => {
-          if (!mergedReceipts.some(mr => mr.date === lr.date && mr.itemKey === lr.itemKey && mr.quantity === lr.quantity)) {
+          if (!mergedReceipts.some(mr => mr.date === lr.date && mr.billNo === lr.billNo && JSON.stringify(mr.items) === JSON.stringify(lr.items))) {
             mergedReceipts.push(lr);
           }
         });
 
-        // Damaged stock union
+        // Stock receipts union (Upper)
+        const mergedReceiptsUpper = [...(remoteData.stockReceiptsUpper || [])];
+        (dataToPush.stockReceiptsUpper || []).forEach(lr => {
+          if (!mergedReceiptsUpper.some(mr => mr.date === lr.date && mr.billNo === lr.billNo && JSON.stringify(mr.items) === JSON.stringify(lr.items))) {
+            mergedReceiptsUpper.push(lr);
+          }
+        });
+
+        // Damaged stock union (Primary)
         const mergedDamaged = [...(remoteData.damagedStock || [])];
         (dataToPush.damagedStock || []).forEach(ld => {
-          if (!mergedDamaged.some(md => md.date === ld.date && md.reason === ld.reason)) {
+          if (!mergedDamaged.some(md => md.date === ld.date && md.reason === ld.reason && JSON.stringify(md.items) === JSON.stringify(ld.items))) {
             mergedDamaged.push(ld);
+          }
+        });
+
+        // Damaged stock union (Upper)
+        const mergedDamagedUpper = [...(remoteData.damagedStockUpper || [])];
+        (dataToPush.damagedStockUpper || []).forEach(ld => {
+          if (!mergedDamagedUpper.some(md => md.date === ld.date && md.reason === ld.reason && JSON.stringify(md.items) === JSON.stringify(ld.items))) {
+            mergedDamagedUpper.push(ld);
+          }
+        });
+
+        // Stock transfers union (Inter-Section Loans)
+        const mergedTransfers = [...(remoteData.stockTransfers || [])];
+        (dataToPush.stockTransfers || []).forEach(lt => {
+          if (!mergedTransfers.some(mt => mt.id === lt.id || (mt.date === lt.date && mt.direction === lt.direction && JSON.stringify(mt.items) === JSON.stringify(lt.items)))) {
+            mergedTransfers.push(lt);
           }
         });
 
         dataToPush = Object.assign({}, dataToPush, {
           records: mergedRecords,
+          recordsUpper: mergedRecordsUpper,
           tasteRecords: mergedTaste,
+          tasteRecordsUpper: mergedTasteUpper,
           stockReceipts: mergedReceipts,
-          damagedStock: mergedDamaged
+          stockReceiptsUpper: mergedReceiptsUpper,
+          damagedStock: mergedDamaged,
+          damagedStockUpper: mergedDamagedUpper,
+          stockTransfers: mergedTransfers
         });
 
         if (typeof app !== 'undefined' && app.data) {
           app.data.records = mergedRecords;
+          app.data.recordsUpper = mergedRecordsUpper;
           app.data.tasteRecords = mergedTaste;
+          app.data.tasteRecordsUpper = mergedTasteUpper;
           app.data.stockReceipts = mergedReceipts;
+          app.data.stockReceiptsUpper = mergedReceiptsUpper;
           app.data.damagedStock = mergedDamaged;
+          app.data.damagedStockUpper = mergedDamagedUpper;
+          app.data.stockTransfers = mergedTransfers;
           if (typeof app.saveState === 'function') app.saveState(true);
         }
 
@@ -378,24 +414,59 @@ const cloudSync = {
           if (typeof app !== 'undefined' && app.data) {
             // Smart Merge: Local + Remote
             const mergedRecords = Object.assign({}, app.data.records || {}, remoteRecords);
+            const mergedRecordsUpper = Object.assign({}, app.data.recordsUpper || {}, remoteData.recordsUpper || {});
+            const mergedTaste = Object.assign({}, app.data.tasteRecords || {}, remoteData.tasteRecords || {});
+            const mergedTasteUpper = Object.assign({}, app.data.tasteRecordsUpper || {}, remoteData.tasteRecordsUpper || {});
 
+            // Stock receipts union (Primary)
             const mergedReceipts = [...(remoteData.stockReceipts || [])];
             (app.data.stockReceipts || []).forEach(lr => {
-              if (!mergedReceipts.some(mr => mr.date === lr.date && mr.itemKey === lr.itemKey && mr.quantity === lr.quantity)) {
+              if (!mergedReceipts.some(mr => mr.date === lr.date && mr.billNo === lr.billNo && JSON.stringify(mr.items) === JSON.stringify(lr.items))) {
                 mergedReceipts.push(lr);
               }
             });
 
+            // Stock receipts union (Upper)
+            const mergedReceiptsUpper = [...(remoteData.stockReceiptsUpper || [])];
+            (app.data.stockReceiptsUpper || []).forEach(lr => {
+              if (!mergedReceiptsUpper.some(mr => mr.date === lr.date && mr.billNo === lr.billNo && JSON.stringify(mr.items) === JSON.stringify(lr.items))) {
+                mergedReceiptsUpper.push(lr);
+              }
+            });
+
+            // Damaged stock union (Primary)
             const mergedDamaged = [...(remoteData.damagedStock || [])];
             (app.data.damagedStock || []).forEach(ld => {
-              if (!mergedDamaged.some(md => md.date === ld.date && md.reason === ld.reason)) {
+              if (!mergedDamaged.some(md => md.date === ld.date && md.reason === ld.reason && JSON.stringify(md.items) === JSON.stringify(ld.items))) {
                 mergedDamaged.push(ld);
               }
             });
 
+            // Damaged stock union (Upper)
+            const mergedDamagedUpper = [...(remoteData.damagedStockUpper || [])];
+            (app.data.damagedStockUpper || []).forEach(ld => {
+              if (!mergedDamagedUpper.some(md => md.date === ld.date && md.reason === ld.reason && JSON.stringify(md.items) === JSON.stringify(ld.items))) {
+                mergedDamagedUpper.push(ld);
+              }
+            });
+
+            // Stock transfers union (Inter-Section Loans)
+            const mergedTransfers = [...(remoteData.stockTransfers || [])];
+            (app.data.stockTransfers || []).forEach(lt => {
+              if (!mergedTransfers.some(mt => mt.id === lt.id || (mt.date === lt.date && mt.direction === lt.direction && JSON.stringify(mt.items) === JSON.stringify(lt.items)))) {
+                mergedTransfers.push(lt);
+              }
+            });
+
             app.data.records = mergedRecords;
+            app.data.recordsUpper = mergedRecordsUpper;
+            app.data.tasteRecords = mergedTaste;
+            app.data.tasteRecordsUpper = mergedTasteUpper;
             app.data.stockReceipts = mergedReceipts;
+            app.data.stockReceiptsUpper = mergedReceiptsUpper;
             app.data.damagedStock = mergedDamaged;
+            app.data.damagedStockUpper = mergedDamagedUpper;
+            app.data.stockTransfers = mergedTransfers;
 
             if (remoteData.settings) {
               app.data.settings = Object.assign({}, app.data.settings, remoteData.settings);
@@ -403,14 +474,17 @@ const cloudSync = {
             if (remoteData.initialStock) {
               app.data.initialStock = Object.assign({}, app.data.initialStock, remoteData.initialStock);
             }
+            if (remoteData.initialStockUpper) {
+              app.data.initialStockUpper = Object.assign({}, app.data.initialStockUpper || {}, remoteData.initialStockUpper);
+            }
             if (remoteData.customDemands) {
               app.data.customDemands = Object.assign({}, app.data.customDemands, remoteData.customDemands);
             }
+            if (remoteData.customDemandsUpper) {
+              app.data.customDemandsUpper = Object.assign({}, app.data.customDemandsUpper || {}, remoteData.customDemandsUpper);
+            }
             if (remoteData.formBRemarks) {
               app.data.formBRemarks = Object.assign({}, app.data.formBRemarks, remoteData.formBRemarks);
-            }
-            if (remoteData.tasteRecords) {
-              app.data.tasteRecords = Object.assign({}, app.data.tasteRecords, remoteData.tasteRecords);
             }
 
             // Save state skipping recursive cloud push
